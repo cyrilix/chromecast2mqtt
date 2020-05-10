@@ -27,7 +27,7 @@ class MqttStatusListener:
         client = mqtt.Client(client_id=client_id, clean_session=False, userdata=self,
                              protocol=mqtt.MQTTv311)
         client.username_pw_set(username=username, password=password)
-        if ca_certs:
+        if ca_certs_file:
             client.tls_set(ca_certs=ca_certs_file, certfile=cert_file, keyfile=key_file, cert_reqs=ssl.CERT_REQUIRED,
                            tls_version=ssl.PROTOCOL_TLSv1_2)
 
