@@ -26,7 +26,9 @@ class MqttStatusListener:
                       ca_certs_file: str = None, cert_file: str = None, key_file: str = None) -> mqtt.Client:
         client = mqtt.Client(client_id=client_id, clean_session=False, userdata=self,
                              protocol=mqtt.MQTTv311)
-        client.username_pw_set(username=username, password=password)
+        if username:
+            client.username_pw_set(username=username, password=password)
+
         if ca_certs_file:
             client.tls_set(ca_certs=ca_certs_file, certfile=cert_file, keyfile=key_file, cert_reqs=ssl.CERT_REQUIRED,
                            tls_version=ssl.PROTOCOL_TLSv1_2)
@@ -96,14 +98,7 @@ def main():
         raise ConfigurationException("Environment variable 'MQTT_PORT' not defined")
     mqtt_port = int(os.environ['MQTT_PORT'])
 
-    if 'MQTT_USERNAME' not in os.environ:
-        logger.info("Environment variable 'MQTT_USERNAME' not defined")
-        raise ConfigurationException("Environment variable 'MQTT_USERNAME' not defined")
     username = os.environ['MQTT_USERNAME']
-
-    if 'MQTT_PASSWORD' not in os.environ:
-        logger.info("Environment variable 'MQTT_PASSWORD' not defined")
-        raise ConfigurationException("Environment variable 'MQTT_PASSWORD' not defined")
     password = os.environ['MQTT_PASSWORD']
 
     if 'MQTT_TOPIC_BASE' not in os.environ:
