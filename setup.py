@@ -39,6 +39,7 @@ setup(name='chromecast2mqtt',
 
           'Programming Language :: Python :: 3.6',
           'Programming Language :: Python :: 3.7',
+          'Programming Language :: Python :: 3.8',
       ],
       keywords='chromecast mqtt',
 
