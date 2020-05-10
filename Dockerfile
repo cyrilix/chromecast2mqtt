@@ -7,4 +7,6 @@ ADD . .
 
 RUN python setup.py install
 
+USER 1234
+
 CMD ["chromecast2mqtt"]
