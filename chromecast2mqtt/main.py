@@ -14,17 +14,23 @@ logger = logging.getLogger(__name__)
 class MqttStatusListener:
 
     def __init__(self, host: str, port: int, topic: str, username: str, password: str = None,
-                 client_id: str = 'chromecast2mqtt') -> None:
+                 client_id: str = 'chromecast2mqtt',
+                 ca_certs_file: str = None, cert_file: str = None, key_file: str = None) -> None:
         logger.info("Init mqtt connection")
-        client = self._connect_mqtt(host, port, client_id, username, password)
+        client = self._connect_mqtt(host, port, client_id, username, password, ca_certs_file, cert_file, key_file)
         self._topic = topic
         self._client = client
         self._mute_state = 'OFF'
 
-    def _connect_mqtt(self, host: str, port: int, client_id: str, username: str, password: str) -> mqtt.Client:
+    def _connect_mqtt(self, host: str, port: int, client_id: str, username: str, password: str,
+                      ca_certs_file: str = None, cert_file: str = None, key_file: str = None) -> mqtt.Client:
         client = mqtt.Client(client_id=client_id, clean_session=False, userdata=self,
                              protocol=mqtt.MQTTv311)
         client.username_pw_set(username=username, password=password)
+        if ca_certs:
+            client.tls_set(ca_certs=ca_certs_file, certfile=cert_file, keyfile=key_file, cert_reqs=ssl.CERT_REQUIRED,
+                           tls_version=ssl.PROTOCOL_TLSv1_2)
+
         retry = True
         while retry:
             try:
@@ -105,11 +111,18 @@ def main():
         raise ConfigurationException("Environment variable 'MQTT_TOPIC_BASE' not defined")
     topic_base = os.environ['MQTT_TOPIC_BASE']
 
+    ca_certs = os.environ['CA_CERTS_FILE']
+    cert_file = os.environ['CERT_FILE']
+    key_file = os.environ['KEY_FILE']
+
     with MqttStatusListener.listener(host=mqtt_host,
                                      port=mqtt_port,
                                      topic=topic_base,
                                      username=username,
-                                     password=password) as mqtt_listener:
+                                     password=password,
+                                     ca_certs_file=ca_certs,
+                                     cert_file=cert_file,
+                                     key_file=key_file) as mqtt_listener:
         cast = Chromecast(host=host)
         cast.register_status_listener(mqtt_listener)
         logger.info("Start chromecast connection")
