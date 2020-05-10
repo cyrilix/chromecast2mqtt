@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 class MqttStatusListener:
 
     def __init__(self, host: str, port: int, topic: str, username: str, password: str = None,
-                 client_id: str = 'chromecast2mqtt',
+                 client_id: str = None,
                  ca_certs_file: str = None, cert_file: str = None, key_file: str = None) -> None:
         logger.info("Init mqtt connection")
         client = self._connect_mqtt(host, port, client_id, username, password, ca_certs_file, cert_file, key_file)
@@ -24,7 +24,10 @@ class MqttStatusListener:
 
     def _connect_mqtt(self, host: str, port: int, client_id: str, username: str, password: str,
                       ca_certs_file: str = None, cert_file: str = None, key_file: str = None) -> mqtt.Client:
-        client = mqtt.Client(client_id=client_id, clean_session=False, userdata=self,
+        clean_session = False
+        if not client_id:
+            clean_session = True
+        client = mqtt.Client(client_id=client_id, clean_session=clean_session, userdata=self,
                              protocol=mqtt.MQTTv311)
         if username:
             client.username_pw_set(username=username, password=password)
