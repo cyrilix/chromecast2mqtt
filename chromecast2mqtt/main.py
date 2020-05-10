@@ -98,17 +98,27 @@ def main():
         raise ConfigurationException("Environment variable 'MQTT_PORT' not defined")
     mqtt_port = int(os.environ['MQTT_PORT'])
 
-    username = os.environ['MQTT_USERNAME']
-    password = os.environ['MQTT_PASSWORD']
+    username = None
+    if 'MQTT_USERNAME' in os.environ:
+        username = os.environ['MQTT_USERNAME']
+    password = None
+    if 'MQTT_PASSWORD' in os.environ:
+        password = os.environ['MQTT_PASSWORD']
 
     if 'MQTT_TOPIC_BASE' not in os.environ:
         logger.info("Environment variable 'MQTT_TOPIC_BASE' not defined")
         raise ConfigurationException("Environment variable 'MQTT_TOPIC_BASE' not defined")
     topic_base = os.environ['MQTT_TOPIC_BASE']
 
-    ca_certs = os.environ['CA_CERTS_FILE']
-    cert_file = os.environ['CERT_FILE']
-    key_file = os.environ['KEY_FILE']
+    ca_certs = None
+    if 'CA_CERTS_FILE' in os.environ:
+        ca_certs = os.environ['CA_CERTS_FILE']
+    cert_file = None
+    if 'CERT_FILE' in os.environ:
+        cert_file = os.environ['CERT_FILE']
+    key_file = None
+    if 'KEY_FILE' in os.environ:
+        key_file = os.environ['KEY_FILE']
 
     with MqttStatusListener.listener(host=mqtt_host,
                                      port=mqtt_port,
