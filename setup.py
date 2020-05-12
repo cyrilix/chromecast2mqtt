@@ -3,7 +3,7 @@ from setuptools import setup, find_packages
 tests_require = ['pytest'],
 
 setup(name='chromecast2mqtt',
-      version='0.1',
+      version='0.2',
       description='Chromecast to mqqt bridge',
       url='https://github.com/cyrilix/chromecast2mqtt',
       author='Cyrille Nofficial',
