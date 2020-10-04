@@ -5,11 +5,11 @@ name = "pypi"
 
 [packages]
 chromecast2mqtt = {editable = true,path = "."}
-pychromecast = "==4.1.1"
+pychromecast = "==7.5.0"
 pytest = "==5.3.5"
 
 [dev-packages]
 "pytest" = "*"
 
 [requires]
-python_version = "3.7"
+python_version = "3.8"
