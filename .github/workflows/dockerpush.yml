@@ -75,5 +75,5 @@ jobs:
           echo IMAGE_ID=$IMAGE_ID
           echo VERSION=$VERSION
 
-          docker buildx build . --platform linux/arm/v7,linux/arm64,linux/X86_64 --progress plain --push --tag $IMAGE_ID:$VERSION
+          docker buildx build . --platform linux/arm64,linux/X86_64 --progress plain --push --tag $IMAGE_ID:$VERSION
 
