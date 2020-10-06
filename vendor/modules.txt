@@ -2,7 +2,7 @@
 github.com/buger/jsonparser
 # github.com/cenkalti/backoff v2.2.1+incompatible
 github.com/cenkalti/backoff
-# github.com/cyrilix/mqtt-tools v0.0.0-20201005102231-453450089b74
+# github.com/cyrilix/mqtt-tools v0.1.0
 ## explicit
 github.com/cyrilix/mqtt-tools/mqttTooling
 # github.com/eclipse/paho.mqtt.golang v1.2.0
