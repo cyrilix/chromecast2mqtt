@@ -22,27 +22,42 @@ const (
 func listenEvents(app *application.Application, client MQTT.Client, topic string, mqttParameters *mqttTooling.MqttCliParameters) error {
 
 	app.MediaStart()
-
+	logb := log.WithFields(log.Fields{
+		"broker": mqttParameters.Broker,
+	})
 	app.AddMessageFunc(func(msg *api.CastMessage) {
 		if msg.GetPayloadType() != api.CastMessage_STRING {
 			return
 		}
-		log.Infof("raw msg: %#v", *msg)
+		logb.WithFields(log.Fields{
+			"raw_msg": msg.String(),
+		}).Debug("new msg")
 		payload := msg.GetPayloadUtf8()
 		var response cast.ReceiverStatusResponse
 		err := json.Unmarshal([]byte(payload), &response)
 		if err != nil {
-			log.Errorf("unable to marshal json response: %v", err)
+			logb.Errorf("unable to marshal json response: %v", err)
 		}
-		log.Debugf("new payload: %#v", response)
+		logb.WithFields(log.Fields{
+			"payload": response,
+		}).Debug("new payload")
 
 		mute := "OFF"
 		if response.Status.Volume.Muted {
 			mute = "ON"
 		}
-		log.Infof("publish to topic %v/volume", topic)
-		client.Publish(topic+"/volume", byte(mqttParameters.Qos), mqttParameters.Retain, strconv.Itoa(int(100*response.Status.Volume.Level))).Wait()
-		log.Infof("publish to topic %v/mute", topic)
+
+		vol := strconv.Itoa(int(100 * response.Status.Volume.Level))
+		logb.WithFields(log.Fields{
+			"topic": topic + "/volume",
+			"volume": vol,
+		}).Info("publish volume event")
+		client.Publish(topic+"/volume", byte(mqttParameters.Qos), mqttParameters.Retain, vol).Wait()
+
+		logb.WithFields(log.Fields{
+			"topic": topic + "/mute",
+			"mute": mute,
+		}).Info("publish mute event")
 		client.Publish(topic+"/mute", byte(mqttParameters.Qos), mqttParameters.Retain, mute).Wait()
 
 	})
@@ -53,20 +68,34 @@ func listenEvents(app *application.Application, client MQTT.Client, topic string
 func main() {
 	var topic, chromecastAddress string
 	var chromecastPort int
+	var debug bool
 
 	flag.StringVar(&topic, "topic", "", "The topic name to publish")
 	flag.StringVar(&chromecastAddress, "chromecast-addr", "", "Chromecast device ip address, if not set, discover from network")
 	flag.IntVar(&chromecastPort, "chromecast-port", -1, "Chromecast device ip port, if not set, discover from network")
-
+	flag.BoolVar(&debug, "debug", false, "Display debug logs")
 	parameters := mqttTooling.MqttCliParameters{
 		ClientId: defaultClientId,
 	}
+
 	mqttTooling.InitMqttFlagSet(&parameters)
 	flag.Parse()
 	if len(os.Args) <= 1 {
 		flag.PrintDefaults()
 		os.Exit(1)
 	}
+	log.SetFormatter(&log.TextFormatter{
+		DisableLevelTruncation: true,
+		DisableTimestamp:       true,
+		PadLevelText:           true,
+	})
+	log.SetOutput(os.Stdout)
+	if debug {
+		log.SetLevel(log.DebugLevel)
+	} else {
+		log.SetLevel(log.InfoLevel)
+	}
+	log.SetReportCaller(false)
 
 	if topic == "" {
 		log.Fatal("topic is mandatory")
@@ -74,7 +103,9 @@ func main() {
 
 	client, err := mqttTooling.Connect(&parameters)
 	if err != nil {
-		log.Fatalf("unable to connect to mqtt bus: %v", err)
+		log.WithFields(log.Fields{
+			"broker": parameters.Broker,
+		}).Fatalf("unable to connect to mqtt bus: %v", err)
 	}
 	defer client.Disconnect(50)
 
@@ -100,7 +131,10 @@ func initApp(err error, chromecastAddress string, chromecastPort int) *applicati
 	)
 
 	if err != nil {
-		log.Fatalf("unable to connect to chromecast application: %v", err)
+		log.WithFields(log.Fields{
+			"address": chromecastAddress,
+			"port":    chromecastPort,
+		}).Fatalf("unable to connect to chromecast application: %v", err)
 	}
 	return app
 }

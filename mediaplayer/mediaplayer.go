@@ -56,7 +56,6 @@ type ApplicationOptions struct {
 	deviceName        string
 	deviceUuid        string
 	device            string
-	debug             bool
 	disableCache      bool
 	addr              string
 	port              int
@@ -80,7 +79,6 @@ var defaultApplicationOptions = ApplicationOptions{
 	deviceName:        "",
 	deviceUuid:        "",
 	device:            "",
-	debug:             true,
 	disableCache:      true,
 	addr:              "",
 	port:              -1,
@@ -96,7 +94,6 @@ func NewApplication(opts ...ApplicationOption) (*application.Application, error)
 	}
 
 	applicationOptions := []application.ApplicationOption{
-		application.WithDebug(options.debug),
 		application.WithCacheDisabled(options.disableCache),
 	}
 
@@ -139,9 +136,12 @@ func NewApplication(opts ...ApplicationOption) (*application.Application, error)
 			cache.Save(getCacheKey(cachedEntry.UUID), cachedEntryJson)
 			cache.Save(getCacheKey(cachedEntry.Name), cachedEntryJson)
 		}
-		if options.debug {
-			fmt.Printf("using device name=%s addr=%s port=%d uuid=%s\n", entry.GetName(), entry.GetAddr(), entry.GetPort(), entry.GetUUID())
-		}
+		log.WithFields(log.Fields{
+			"name": entry.GetName(),
+			"addr": entry.GetAddr(),
+			"port": entry.GetPort(),
+			"uuid": entry.GetUUID(),
+		}).Info("device found")
 	} else {
 		if options.port <= 0 {
 			return nil, errors.Errorf("port needs to be a number > 0: port=%v", options.port)
@@ -203,16 +203,19 @@ func findCastDNS(iface *net.Interface, options *ApplicationOptions) (castdns.Cas
 	// Always return entries in deterministic order.
 	sort.Slice(foundEntries, func(i, j int) bool { return foundEntries[i].DeviceName < foundEntries[j].DeviceName })
 
-	fmt.Printf("Found %d cast dns entries, select one:\n", len(foundEntries))
-	for i, d := range foundEntries {
-		fmt.Printf("%d) device=%q device_name=%q address=\"%s:%d\" uuid=%q\n", i+1, d.Device, d.DeviceName, d.AddrV4, d.Port, d.UUID)
+	if log.IsLevelEnabled(log.InfoLevel) {
+		log.Infof("Found %d cast dns entries, select one:\n", len(foundEntries))
+		for i, d := range foundEntries {
+			log.Infof("%d) device=%q device_name=%q address=\"%s:%d\" uuid=%q\n", i+1, d.Device, d.DeviceName, d.AddrV4, d.Port, d.UUID)
+		}
 	}
+
 	reader := bufio.NewReader(os.Stdin)
 	for {
-		fmt.Printf("Enter selection: ")
+		log.Infof("Enter selection: ")
 		text, err := reader.ReadString('\n')
 		if err != nil {
-			fmt.Printf("error reading console: %v\n", err)
+			log.Errorf("error reading console: %v\n", err)
 			continue
 		}
 		i, err := strconv.Atoi(strings.TrimSpace(text))
