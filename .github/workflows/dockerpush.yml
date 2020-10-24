@@ -1,10 +1,14 @@
 name: Docker
 
 on:
+  schedule:
+    - cron: '0 10 4 * *' # everyday at 4h10
+
   push:
     # Publish `master` as Docker `latest` image.
     branches:
       - master
+      - v*
 
     # Publish `v1.2.3` tags as releases.
     tags:
@@ -14,8 +18,9 @@ on:
   pull_request:
 
 env:
-  REPOSITORY: cyrilix
+  IMAGE_REPOSITORY: cyrilix
   IMAGE_NAME: chromecast2mqtt
+  PLATFORMS: linux/arm64,linux/amd64
 
 jobs:
   # Run tests.
@@ -26,14 +31,17 @@ jobs:
     steps:
       - uses: actions/checkout@v2
 
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v1
+        with:
+          platforms: all
+
+      - name: Docker Setup Buildx
+        uses: docker/setup-buildx-action@v1.0.2
+
       - name: Run tests
         run: |
-          if [ -f docker-compose.test.yml ]; then
-            docker-compose --file docker-compose.test.yml build
-            docker-compose --file docker-compose.test.yml run sut
-          else
-            docker buildx build . --platform linux/arm64,linux/amd64
-          fi
+          docker buildx build . --platform ${PLATFORMS}
 
   # Push image to GitHub Package Registry.
   # See also https://docs.docker.com/docker-hub/builds/
@@ -47,33 +55,76 @@ jobs:
     steps:
       - uses: actions/checkout@v2
 
-      - name: Set up Docker Buildx
-        id: buildx
-        uses: crazy-max/ghaction-docker-buildx@v1
+      - name: Repo metadata
+        id: repo
+        uses: actions/github-script@v3
         with:
-          buildx-version: latest
+          script: |
+            const repo = await github.repos.get(context.repo)
+            return repo.data
 
-      - name: Log into registry
-        env:
+      - name: Prepare
+        id: prep
+        run: |
+          DOCKER_IMAGE=${IMAGE_REPOSITORY}/${IMAGE_NAME}
+          VERSION=noop
+          if [ "${{ github.event_name }}" = "schedule" ]; then
+            VERSION=nightly
+          elif [[ $GITHUB_REF == refs/tags/* ]]; then
+            VERSION=$(echo "${{ github.ref }}" | sed -e 's,.*/\(.*\),\1,' | sed "s/\.x$//" )
+          elif [[ $GITHUB_REF == refs/heads/* ]]; then
+            VERSION=$(echo ${GITHUB_REF#refs/heads/} | sed -r 's#/+#-#g')
+            if [ "${{ github.event.repository.default_branch }}" = "$VERSION" ]; then
+              VERSION=edge
+            fi
+          elif [[ $GITHUB_REF == refs/pull/* ]]; then
+            VERSION=pr-${{ github.event.number }}
+          fi
+          TAGS="${DOCKER_IMAGE}:${VERSION}"
+          if [[ $VERSION =~ ^v[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$ ]]; then
+            MINOR=${VERSION%.*}
+            MAJOR=${MINOR%.*}
+            TAGS="$TAGS,${DOCKER_IMAGE}:${MINOR},${DOCKER_IMAGE}:${MAJOR},${DOCKER_IMAGE}:latest"
+          elif [ "${{ github.event_name }}" = "push" ]; then
+            TAGS="$TAGS,${DOCKER_IMAGE}:sha-${GITHUB_SHA::8}"
+          fi
+          echo ::set-output name=version::${VERSION}
+          echo ::set-output name=tags::${TAGS}
+          echo ::set-output name=created::$(date -u +'%Y-%m-%dT%H:%M:%SZ')
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v1
+        with:
+          platforms: all
+
+      - name: Docker Setup Buildx
+        uses: docker/setup-buildx-action@v1.0.2
+
+      - name: Login to DockerHub
+        uses: docker/login-action@v1
+        with:
           username: ${{ secrets.dockerhub_username }}
           password: ${{ secrets.dockerhub_token }}
-        run: echo "${password}" | docker login -u ${username} --password-stdin
 
-      - name: Push image
-        run: |
-          IMAGE_ID=$REPOSITORY/$IMAGE_NAME
+      - name: Build and push
+        uses: docker/build-push-action@v2
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: ${{ env.PLATFORMS }}
+          push: true
+          tags: ${{ steps.prep.outputs.tags }}
+          labels: |
+            org.opencontainers.image.title=${{ fromJson(steps.repo.outputs.result).name }}
+            org.opencontainers.image.description=${{ fromJson(steps.repo.outputs.result).description }}
+            org.opencontainers.image.url=${{ fromJson(steps.repo.outputs.result).html_url }}
+            org.opencontainers.image.source=${{ fromJson(steps.repo.outputs.result).clone_url }}
+            org.opencontainers.image.version=${{ steps.prep.outputs.version }}
+            org.opencontainers.image.created=${{ steps.prep.outputs.created }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.licenses=${{ fromJson(steps.repo.outputs.result).license.spdx_id }}
 
-          # Strip git ref prefix from version
-          VERSION=$(echo "${{ github.ref }}" | sed -e 's,.*/\(.*\),\1,')
 
-          # Strip "v" prefix from tag name
-          [[ "${{ github.ref }}" == "refs/tags/"* ]] && VERSION=$(echo $VERSION | sed -e 's/^v//')
 
-          # Use Docker `latest` tag convention
-          [ "$VERSION" == "master" ] && VERSION=latest
 
-          echo IMAGE_ID=$IMAGE_ID
-          echo VERSION=$VERSION
-
-          docker buildx build . --platform linux/arm64,linux/X86_64 --progress plain --push --tag $IMAGE_ID:$VERSION
 
