@@ -3,33 +3,31 @@ package main
 import (
 	"encoding/json"
 	"flag"
-	"fmt"
 	"github.com/cyrilix/chromecast2mqt/mediaplayer"
 	"github.com/cyrilix/mqtt-tools/mqttTooling"
 	MQTT "github.com/eclipse/paho.mqtt.golang"
 	log "github.com/sirupsen/logrus"
+	"github.com/vishen/go-chromecast/application"
 	"github.com/vishen/go-chromecast/cast"
 	"github.com/vishen/go-chromecast/cast/proto"
 	"os"
 	"strconv"
 )
 
-var (
-	defaultClientId = "chromecast2mqtt"
+const (
+	defaultChromecastPort = 8009
+	defaultClientId       = "chromecast2mqtt"
 )
 
-func listenEvents(client MQTT.Client, topic string, mqttParameters *mqttTooling.MqttCliParameters) error {
+func listenEvents(app *application.Application, client MQTT.Client, topic string, mqttParameters *mqttTooling.MqttCliParameters) error {
 
-	app, err := mediaplayer.NewApplication()
-	if err != nil {
-		return fmt.Errorf("unable to connect to chromecast application: %v", err)
-	}
+	app.MediaStart()
 
 	app.AddMessageFunc(func(msg *api.CastMessage) {
 		if msg.GetPayloadType() != api.CastMessage_STRING {
 			return
 		}
-
+		log.Infof("raw msg: %#v", *msg)
 		payload := msg.GetPayloadUtf8()
 		var response cast.ReceiverStatusResponse
 		err := json.Unmarshal([]byte(payload), &response)
@@ -53,9 +51,12 @@ func listenEvents(client MQTT.Client, topic string, mqttParameters *mqttTooling.
 }
 
 func main() {
-	var topic string
+	var topic, chromecastAddress string
+	var chromecastPort int
 
 	flag.StringVar(&topic, "topic", "", "The topic name to publish")
+	flag.StringVar(&chromecastAddress, "chromecast-addr", "", "Chromecast device ip address, if not set, discover from network")
+	flag.IntVar(&chromecastPort, "chromecast-port", -1, "Chromecast device ip port, if not set, discover from network")
 
 	parameters := mqttTooling.MqttCliParameters{
 		ClientId: defaultClientId,
@@ -77,6 +78,29 @@ func main() {
 	}
 	defer client.Disconnect(50)
 
-	err = listenEvents(client, topic, &parameters)
+	app := initApp(err, chromecastAddress, chromecastPort)
 
+	err = listenEvents(app, client, topic, &parameters)
+
+}
+
+func initApp(err error, chromecastAddress string, chromecastPort int) *application.Application {
+	options := make([]mediaplayer.ApplicationOption, 0)
+	if chromecastAddress != "" {
+		options = append(options, mediaplayer.WithAddress(chromecastAddress))
+	}
+	if chromecastPort > 0 {
+		options = append(options, mediaplayer.WithPort(chromecastPort))
+	} else if chromecastAddress != "" {
+		// Address set but not port => use default port
+		options = append(options, mediaplayer.WithPort(defaultChromecastPort))
+	}
+	app, err := mediaplayer.NewApplication(
+		options...,
+	)
+
+	if err != nil {
+		log.Fatalf("unable to connect to chromecast application: %v", err)
+	}
+	return app
 }

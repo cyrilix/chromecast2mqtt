@@ -50,31 +50,64 @@ func (e CachedDNSEntry) GetPort() int {
 	return e.Port
 }
 
-func NewApplication() (*application.Application, error) {
-	deviceName := ""
-	deviceUuid := ""
-	device := ""
-	debug := false
-	disableCache := true
-	addr := ""
-	port := ""
-	ifaceName := ""
-	dnsTimeoutSeconds := 10
-	useFirstDevice := true
+type ApplicationOption func(*ApplicationOptions)
+
+type ApplicationOptions struct {
+	deviceName        string
+	deviceUuid        string
+	device            string
+	debug             bool
+	disableCache      bool
+	addr              string
+	port              int
+	ifaceName         string
+	dnsTimeoutSeconds int64
+	useFirstDevice    bool
+}
+
+func WithAddress(addr string) ApplicationOption {
+	return func(o *ApplicationOptions) {
+		o.addr = addr
+	}
+}
+func WithPort(port int) ApplicationOption {
+	return func(o *ApplicationOptions) {
+		o.port = port
+	}
+}
+
+var defaultApplicationOptions = ApplicationOptions{
+	deviceName:        "",
+	deviceUuid:        "",
+	device:            "",
+	debug:             true,
+	disableCache:      true,
+	addr:              "",
+	port:              -1,
+	ifaceName:         "",
+	dnsTimeoutSeconds: 10,
+	useFirstDevice:    true,
+}
+
+func NewApplication(opts ...ApplicationOption) (*application.Application, error) {
+	options := defaultApplicationOptions
+	for _, o := range opts {
+		o(&options)
+	}
 
 	applicationOptions := []application.ApplicationOption{
-		application.WithDebug(debug),
-		application.WithCacheDisabled(disableCache),
+		application.WithDebug(options.debug),
+		application.WithCacheDisabled(options.disableCache),
 	}
 
 	// If we need to look on a specific network interface for mdns or
 	// for finding a network ip to host from, ensure that the network
 	// interface exists.
 	var iface *net.Interface
-	if ifaceName != "" {
+	if options.ifaceName != "" {
 		var err error
-		if iface, err = net.InterfaceByName(ifaceName); err != nil {
-			return nil, errors.Wrap(err, fmt.Sprintf("unable to find interface %q", ifaceName))
+		if iface, err = net.InterfaceByName(options.ifaceName); err != nil {
+			return nil, errors.Wrap(err, fmt.Sprintf("unable to find interface %q", options.ifaceName))
 		}
 		applicationOptions = append(applicationOptions, application.WithIface(iface))
 	}
@@ -82,20 +115,20 @@ func NewApplication() (*application.Application, error) {
 	var entry castdns.CastDNSEntry
 	// If no address was specified, attempt to determine the address of any
 	// local chromecast devices.
-	if addr == "" {
+	if options.addr == "" {
 		// If a device name or uuid was specified, check the cache for the ip+port
 		found := false
-		if !disableCache && (deviceName != "" || deviceUuid != "") {
-			entry = findCachedCastDNS(deviceName, deviceUuid)
+		if !options.disableCache && (options.deviceName != "" || options.deviceUuid != "") {
+			entry = findCachedCastDNS(options.deviceName, options.deviceUuid)
 			found = entry.GetAddr() != ""
 		}
 		if !found {
 			var err error
-			if entry, err = findCastDNS(iface, dnsTimeoutSeconds, device, deviceName, deviceUuid, useFirstDevice); err != nil {
+			if entry, err = findCastDNS(iface, &options); err != nil {
 				return nil, errors.Wrap(err, "unable to find cast dns entry")
 			}
 		}
-		if !disableCache {
+		if !options.disableCache {
 			cachedEntry := CachedDNSEntry{
 				UUID: entry.GetUUID(),
 				Name: entry.GetName(),
@@ -106,17 +139,16 @@ func NewApplication() (*application.Application, error) {
 			cache.Save(getCacheKey(cachedEntry.UUID), cachedEntryJson)
 			cache.Save(getCacheKey(cachedEntry.Name), cachedEntryJson)
 		}
-		if debug {
+		if options.debug {
 			fmt.Printf("using device name=%s addr=%s port=%d uuid=%s\n", entry.GetName(), entry.GetAddr(), entry.GetPort(), entry.GetUUID())
 		}
 	} else {
-		p, err := strconv.Atoi(port)
-		if err != nil {
-			return nil, errors.Wrap(err, "port needs to be a number")
+		if options.port <= 0 {
+			return nil, errors.Errorf("port needs to be a number > 0: port=%v", options.port)
 		}
 		entry = CachedDNSEntry{
-			Addr: addr,
-			Port: p,
+			Addr: options.addr,
+			Port: options.port,
 		}
 	}
 	app := application.NewApplication(applicationOptions...)
@@ -148,8 +180,8 @@ func findCachedCastDNS(deviceName, deviceUuid string) castdns.CastDNSEntry {
 	return CachedDNSEntry{}
 }
 
-func findCastDNS(iface *net.Interface, dnsTimeoutSeconds int, device, deviceName, deviceUuid string, first bool) (castdns.CastDNSEntry, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second*time.Duration(dnsTimeoutSeconds))
+func findCastDNS(iface *net.Interface, options *ApplicationOptions) (castdns.CastDNSEntry, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*time.Duration(options.dnsTimeoutSeconds))
 	defer cancel()
 	castEntryChan, err := castdns.DiscoverCastDNSEntries(ctx, iface)
 	if err != nil {
@@ -158,7 +190,7 @@ func findCastDNS(iface *net.Interface, dnsTimeoutSeconds int, device, deviceName
 
 	var foundEntries []castdns.CastEntry
 	for entry := range castEntryChan {
-		if first || (deviceUuid != "" && entry.UUID == deviceUuid) || (deviceName != "" && entry.DeviceName == deviceName) || (device != "" && entry.Device == device) {
+		if options.useFirstDevice || (options.deviceUuid != "" && entry.UUID == options.deviceUuid) || (options.deviceName != "" && entry.DeviceName == options.deviceName) || (options.device != "" && entry.Device == options.device) {
 			return entry, nil
 		}
 		foundEntries = append(foundEntries, entry)
