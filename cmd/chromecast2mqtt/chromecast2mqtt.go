@@ -33,7 +33,7 @@ func listenEvents(app *application.Application, client MQTT.Client, topic string
 			"raw_msg": msg.String(),
 		}).Debug("new msg")
 		payload := msg.GetPayloadUtf8()
-		var response cast.ReceiverStatusResponse
+		var response cast.MediaStatusResponse
 		err := json.Unmarshal([]byte(payload), &response)
 		if err != nil {
 			logb.Errorf("unable to marshal json response: %v", err)
@@ -42,12 +42,17 @@ func listenEvents(app *application.Application, client MQTT.Client, topic string
 			"payload": response,
 		}).Debug("new payload")
 
+		if len(response.Status) == 0 {
+			return
+		}
+		mediaStatus := response.Status[0]
+
 		mute := "OFF"
-		if response.Status.Volume.Muted {
+		if mediaStatus.Volume.Muted {
 			mute = "ON"
 		}
 
-		vol := strconv.Itoa(int(100 * response.Status.Volume.Level))
+		vol := strconv.Itoa(int(100 * mediaStatus.Volume.Level))
 		logb.WithFields(log.Fields{
 			"topic": topic + "/volume",
 			"volume": vol,
