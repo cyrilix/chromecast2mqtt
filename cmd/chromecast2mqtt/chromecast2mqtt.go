@@ -32,42 +32,60 @@ func listenEvents(app *application.Application, client MQTT.Client, topic string
 		logb.WithFields(log.Fields{
 			"raw_msg": msg.String(),
 		}).Debug("new msg")
+
 		payload := msg.GetPayloadUtf8()
-		var response cast.MediaStatusResponse
-		err := json.Unmarshal([]byte(payload), &response)
+		var raw map[string]interface{}
+		err := json.Unmarshal([]byte(payload), &raw)
 		if err != nil {
-			logb.Errorf("unable to marshal json response: %v", err)
-		}
-		logb.WithFields(log.Fields{
-			"payload": response,
-		}).Debug("new payload")
-
-		if len(response.Status) == 0 {
-			return
-		}
-		mediaStatus := response.Status[0]
-
-		mute := "OFF"
-		if mediaStatus.Volume.Muted {
-			mute = "ON"
+			logb.Errorf("unable parse message %v: %v", payload, err)
 		}
 
-		vol := strconv.Itoa(int(100 * mediaStatus.Volume.Level))
-		logb.WithFields(log.Fields{
-			"topic": topic + "/volume",
-			"volume": vol,
-		}).Info("publish volume event")
-		client.Publish(topic+"/volume", byte(mqttParameters.Qos), mqttParameters.Retain, vol).Wait()
-
-		logb.WithFields(log.Fields{
-			"topic": topic + "/mute",
-			"mute": mute,
-		}).Info("publish mute event")
-		client.Publish(topic+"/mute", byte(mqttParameters.Qos), mqttParameters.Retain, mute).Wait()
-
+		switch raw["type"] {
+		case "MEDIA_STATUS":
+			onMediaStatusEvent(&payload)
+		case "RECEIVER_STATUS":
+			onReceiverStatusEvent(client, topic, mqttParameters, &payload)
+		}
 	})
 	app.MediaWait()
 	return nil
+}
+
+func onMediaStatusEvent(msg *string) {
+
+}
+
+func onReceiverStatusEvent(client MQTT.Client, topic string, mqttParameters *mqttTooling.MqttCliParameters, msg *string) {
+	logr := log.WithField("type", "RECEIVER_STATUS")
+
+	logr.WithFields(log.Fields{
+		"payload": msg,
+	}).Debug("new payload")
+
+	var response cast.ReceiverStatusResponse
+	err := json.Unmarshal([]byte(*msg), &response)
+	if err != nil {
+		logr.Errorf("unable to marshal json response: %v", err)
+	}
+
+	mute := "OFF"
+	if response.Status.Volume.Muted {
+		mute = "ON"
+	}
+
+	vol := strconv.Itoa(int(100 * response.Status.Volume.Level))
+	logr.WithFields(log.Fields{
+		"topic":  topic + "/volume",
+		"volume": vol,
+	}).Info("publish volume event")
+	client.Publish(topic+"/volume", byte(mqttParameters.Qos), mqttParameters.Retain, vol).Wait()
+
+	logr.WithFields(log.Fields{
+		"topic": topic + "/mute",
+		"mute":  mute,
+	}).Info("publish mute event")
+	client.Publish(topic+"/mute", byte(mqttParameters.Qos), mqttParameters.Retain, mute).Wait()
+
 }
 
 func main() {
