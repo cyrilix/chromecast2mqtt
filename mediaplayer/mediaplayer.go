@@ -152,7 +152,7 @@ func NewApplication(opts ...ApplicationOption) (*application.Application, error)
 		}
 	}
 	app := application.NewApplication(applicationOptions...)
-	if err := app.Start(entry); err != nil {
+	if err := app.Start(entry.GetAddr(), entry.GetPort()); err != nil {
 		// NOTE: currently we delete the dns cache every time we get
 		// an error, this is to make sure that if the device gets a new
 		// ipaddress we will invalidate the cache.

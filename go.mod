@@ -7,5 +7,6 @@ require (
 	github.com/eclipse/paho.mqtt.golang v1.2.0
 	github.com/pkg/errors v0.9.1
 	github.com/sirupsen/logrus v1.7.0
-	github.com/vishen/go-chromecast v0.2.5
+	github.com/vishen/go-chromecast v0.2.7
+	golang.org/x/sys v0.0.0-20201130072748-111129e158e2 // indirect
 )

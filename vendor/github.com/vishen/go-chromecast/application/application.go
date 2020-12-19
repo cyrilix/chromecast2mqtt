@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/h2non/filetype"
 	"github.com/sirupsen/logrus"
 	log "github.com/sirupsen/logrus"
 
@@ -21,7 +22,6 @@ import (
 
 	"github.com/vishen/go-chromecast/cast"
 	pb "github.com/vishen/go-chromecast/cast/proto"
-	castdns "github.com/vishen/go-chromecast/dns"
 	"github.com/vishen/go-chromecast/storage"
 )
 
@@ -69,7 +69,7 @@ type Application struct {
 	messageFuncs []CastMessageFunc
 
 	// Current values from the chromecast.
-	application *cast.Application // It is possible that there is no current application, can happen for goole home.
+	application *cast.Application // It is possible that there is no current application, can happen for google home.
 	media       *cast.Media
 	// There seems to be two different volumes returned from the chromecast,
 	// one for the receiever and one for the playing media. It looks we update
@@ -173,7 +173,7 @@ func (a *Application) messageChanHandler() {
 // to use the mediaFinished channel when it hasn't been properly
 // set up. This is happening because there is some instances where we don't
 // have any running media ('watch' command) but yet the 'mediaFinished'
-// is littered throughout the codebase since. This needs a redesign now that
+// is littered throughout the codebase. This needs a redesign now that
 // we do things other than just loading and playing media files.
 func (a *Application) MediaStart() {
 	a.mediaFinished = make(chan bool, 1)
@@ -250,12 +250,12 @@ func (a *Application) recvMessages() {
 
 func (a *Application) SetDebug(debug bool) { a.debug = debug; a.conn.SetDebug(debug) }
 
-func (a *Application) Start(entry castdns.CastDNSEntry) error {
+func (a *Application) Start(addr string, port int) error {
 	if err := a.loadPlayedItems(); err != nil {
 		a.log("unable to load played items: %v", err)
 	}
 
-	if err := a.conn.Start(entry.GetAddr(), entry.GetPort()); err != nil {
+	if err := a.conn.Start(addr, port); err != nil {
 		return err
 	}
 	if err := a.sendDefaultConn(&cast.ConnectHeader); err != nil {
@@ -289,10 +289,8 @@ func (a *Application) Update() error {
 	var recvStatus *cast.ReceiverStatusResponse
 	var err error
 	// Simple retry. We need this for when the device isn't currently
-	// available, but it is likely that it will come up soon.
-	// TODO: This seems to happen when changing media on the cast device,
-	// not sure how to fix but there might be some way of knowing from the
-	// payload?
+	// available, but it is likely that it will come up soon. If the device
+	// has switch network addresses the caller is expected to handle that situation.
 	for i := 0; i < a.connectionRetries; i++ {
 		recvStatus, err = a.getReceiverStatus()
 		if err == nil {
@@ -341,9 +339,12 @@ func (a *Application) updateMediaStatus() error {
 	return nil
 }
 
-func (a *Application) Close() {
-	a.sendMediaConn(&cast.CloseHeader)
-	a.sendDefaultConn(&cast.CloseHeader)
+func (a *Application) Close(stopMedia bool) error {
+	if stopMedia {
+		a.sendMediaConn(&cast.CloseHeader)
+		a.sendDefaultConn(&cast.CloseHeader)
+	}
+	return a.conn.Close()
 }
 
 func (a *Application) Status() (*cast.Application, *cast.Media, *cast.Volume) {
@@ -439,6 +440,7 @@ func (a *Application) Seek(value int) error {
 	// apps don't handle certain commands.
 	appsSeekTo := []string{
 		"9AC194DC", // Plex
+		"CC1AD845", // Default media
 	}
 
 	for _, app := range appsSeekTo {
@@ -552,48 +554,62 @@ func (a *Application) PlayableMediaType(filename string) bool {
 }
 
 func (a *Application) possibleContentType(filename string) (string, error) {
-	// TODO(vishen): Inspect the file for known headers?
-	// Currently we just check the file extension
+	// If filename is an URL returns the content-type from the HEAD response headers
+	// Otherwise returns the content-type thanks to filetype package
+	var contentType string
 
-	// Can use the following from the Go std library
-	// mime.TypesByExtenstion(filepath.Ext(filename))
-	// fs.DetectContentType(data []byte) // needs opened(ish) file
-
-	// URL's can contain url parameters, and path.Ext doesn't
-	// handle it nicely (`.jpg?xxxx....` isn't the extension).
-	// Split the URL by ? and use the left side for extension.
-	if strings.Contains(filename, "://") && strings.Contains(filename, "?") {
-		parts := strings.Split(filename, "?")
-		filename = parts[0]
+	if strings.Contains(filename, "://") {
+		req, err := http.NewRequest("HEAD", filename, nil)
+		if err != nil {
+			return "", errors.Wrap(err, "NewRequest failed")
+		}
+		client := &http.Client{}
+		res, err := client.Do(req)
+		if err != nil {
+			return "", errors.Wrap(err, "do request failed")
+		}
+		contentType = res.Header.Get("Content-Type")
+	} else {
+		match, err := filetype.MatchFile(filename)
+		if err != nil {
+			return "", errors.Wrap(err, "match failed")
+		}
+		contentType = match.MIME.Value
 	}
+	if contentType == "" {
+		if strings.Contains(filename, "://") && strings.Contains(filename, "?") {
+			parts := strings.Split(filename, "?")
+			filename = parts[0]
+		}
 
-	// https://developers.google.com/cast/docs/media
-	switch ext := strings.ToLower(path.Ext(filename)); ext {
-	case ".jpg", ".jpeg":
-		return "image/jpeg", nil
-	case ".gif":
-		return "image/gif", nil
-	case ".bmp":
-		return "image/bmp", nil
-	case ".png":
-		return "image/png", nil
-	case ".webp":
-		return "image/webp", nil
-	case ".mp4", ".m4a", ".m4p":
-		return "video/mp4", nil
-	case ".webm":
-		return "video/webm", nil
-	case ".mp3":
-		return "audio/mp3", nil
-	case ".flac":
-		return "audio/flac", nil
-	case ".wav":
-		return "audio/wav", nil
-	case ".m3u8":
-		return "application/x-mpegURL", nil
-	default:
-		return "", fmt.Errorf("unknown file extension %q", ext)
+		switch ext := strings.ToLower(path.Ext(filename)); ext {
+		case ".jpg", ".jpeg":
+			return "image/jpeg", nil
+		case ".gif":
+			return "image/gif", nil
+		case ".bmp":
+			return "image/bmp", nil
+		case ".png":
+			return "image/png", nil
+		case ".webp":
+			return "image/webp", nil
+		case ".mp4", ".m4a", ".m4p":
+			return "video/mp4", nil
+		case ".webm":
+			return "video/webm", nil
+		case ".mp3":
+			return "audio/mp3", nil
+		case ".flac":
+			return "audio/flac", nil
+		case ".wav":
+			return "audio/wav", nil
+		case ".m3u8":
+			return "application/x-mpegURL", nil
+		default:
+			return "", fmt.Errorf("unknown file extension %q", ext)
+		}
 	}
+	return contentType, nil
 }
 
 func (a *Application) knownFileType(filename string) bool {
@@ -603,11 +619,25 @@ func (a *Application) knownFileType(filename string) bool {
 	return false
 }
 
+func (a *Application) castPlayableContentType(contentType string) bool {
+	// https://developers.google.com/cast/docs/media
+	switch contentType {
+	case "image/apng", "image/bmp", "image/gif", "image/jpeg", "image/png", "image/webp":
+		return true
+	case "audio/mp2t", "audio/mp3", "audio/mp4", "audio/ogg", "audio/wav", "audio/webm":
+		return true
+	case "video/mp4", "video/webm":
+		return true
+	}
+
+	return false
+}
+
 func (a *Application) PlayedItems() map[string]PlayedItem {
 	return a.playedItems
 }
 
-func (a *Application) Load(filenameOrUrl, contentType string, transcode, detach bool) error {
+func (a *Application) Load(filenameOrUrl, contentType string, transcode, detach, forceDetach bool) error {
 	var mi mediaItem
 	isExternalMedia := false
 	if strings.HasPrefix(filenameOrUrl, "http://") || strings.HasPrefix(filenameOrUrl, "https://") {
@@ -635,7 +665,7 @@ func (a *Application) Load(filenameOrUrl, contentType string, transcode, detach 
 		mi = mediaItems[0]
 	}
 
-	if !isExternalMedia && detach {
+	if !forceDetach && !isExternalMedia && detach {
 		return fmt.Errorf("unable to detach from locally playing media content")
 	}
 
@@ -660,7 +690,7 @@ func (a *Application) Load(filenameOrUrl, contentType string, transcode, detach 
 
 	// If we should detach from waiting for media to finish playing
 	// and this is a url loaded external media, then we can exit early.
-	if detach && isExternalMedia {
+	if (detach && isExternalMedia) || forceDetach {
 		return nil
 	}
 
@@ -835,7 +865,9 @@ func (a *Application) loadAndServeFiles(filenames []string, contentType string, 
 			// If this is a media file we know the chromecast can play,
 			// then we don't need to transcode it.
 			contentTypeToUse, _ = a.possibleContentType(filename)
-			transcodeFile = false
+			if a.castPlayableContentType(contentTypeToUse) {
+				transcodeFile = false
+			}
 		} else if transcodeFile {
 			contentTypeToUse = "video/mp4"
 		}
