@@ -9,12 +9,12 @@ import (
 	"os"
 	"os/exec"
 	"path"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/h2non/filetype"
-	"github.com/sirupsen/logrus"
 	log "github.com/sirupsen/logrus"
 
 	"github.com/buger/jsonparser"
@@ -33,8 +33,7 @@ var (
 const (
 	// 'CC1AD845' seems to be a predefined app; check link
 	// https://gist.github.com/jloutsenhizer/8855258
-	// https://github.com/thibauts/node-castv2
-	defaultChromecastAppId = "CC1AD845"
+	defaultChromecastAppID = "CC1AD845"
 
 	defaultSender = "sender-0"
 	defaultRecv   = "receiver-0"
@@ -78,7 +77,7 @@ type Application struct {
 	volumeMedia    *cast.Volume
 	volumeReceiver *cast.Volume
 
-	httpServer *http.Server
+	httpServer *http.ServeMux
 	serverPort int
 	localIP    string
 	iface      *net.Interface
@@ -101,6 +100,12 @@ type ApplicationOption func(*Application)
 func WithIface(iface *net.Interface) ApplicationOption {
 	return func(a *Application) {
 		a.iface = iface
+	}
+}
+
+func WithServerPort(port int) ApplicationOption {
+	return func(a *Application) {
+		a.serverPort = port
 	}
 }
 
@@ -369,6 +374,32 @@ func (a *Application) Unpause() error {
 		PayloadHeader:  cast.PlayHeader,
 		MediaSessionId: a.media.MediaSessionId,
 	})
+}
+
+func (a *Application) Skipad() error {
+	if a.media == nil {
+		return ErrNoMediaSkip
+	}
+	if a.media.CustomData.PlayerState != 1081 {
+		return ErrNoMediaSkipad
+	}
+
+	var result error
+	MAX_LOOP := 30
+	for a.media.CustomData.PlayerState == 1081 {
+		result = a.sendMediaRecv(&cast.MediaHeader{
+			PayloadHeader:  cast.SkipHeader,
+			MediaSessionId: a.media.MediaSessionId,
+		})
+		// fmt.Printf("Looping because %d\n", a.media.CustomData.PlayerState)
+		time.Sleep(2 * time.Second)
+		a.updateMediaStatus()
+		MAX_LOOP--
+		if MAX_LOOP == 0 {
+			return ErrAdMaxLoop
+		}
+	}
+	return result
 }
 
 func (a *Application) StopMedia() error {
@@ -643,11 +674,9 @@ func (a *Application) Load(filenameOrUrl, contentType string, transcode, detach,
 	if strings.HasPrefix(filenameOrUrl, "http://") || strings.HasPrefix(filenameOrUrl, "https://") {
 		isExternalMedia = true
 		if contentType == "" {
-			var err error
-			contentType, err = a.possibleContentType(filenameOrUrl)
-			if err != nil {
-				return err
-			}
+			// Try and determine the content type, but if we can't,
+			// let the chromecast try and handle the media file anyway.
+			contentType, _ = a.possibleContentType(filenameOrUrl)
 		}
 		mi = mediaItem{
 			contentURL:  filenameOrUrl,
@@ -699,6 +728,32 @@ func (a *Application) Load(filenameOrUrl, contentType string, transcode, detach,
 	return nil
 }
 
+func (a *Application) LoadApp(appID, contentID string) error {
+	// old list https://gist.github.com/jloutsenhizer/8855258.
+	// NOTE: This isn't concurrent safe, but it doesn't need to be at the moment!
+	a.MediaStart()
+
+	if err := a.ensureIsAppID(appID); err != nil {
+		return errors.Wrapf(err, "unable to change chromecast app")
+	}
+
+	// Send the command to the chromecast
+	a.sendMediaRecv(&cast.LoadMediaCommand{
+		PayloadHeader: cast.LoadHeader,
+		CurrentTime:   0,
+		Autoplay:      true,
+		Media: cast.MediaItem{
+			ContentId:  contentID,
+			StreamType: "BUFFERED",
+		},
+	})
+
+	// Wait until we have been notified that the media has finished playing
+	a.MediaWait()
+
+	return nil
+}
+
 func (a *Application) QueueLoad(filenames []string, contentType string, transcode bool) error {
 
 	mediaItems, err := a.loadAndServeFiles(filenames, contentType, transcode)
@@ -742,14 +797,18 @@ func (a *Application) QueueLoad(filenames []string, contentType string, transcod
 func (a *Application) ensureIsDefaultMediaReceiver() error {
 	// If the current chromecast application isn't the Default Media Receiver
 	// we need to change it.
-	if a.application == nil || a.application.AppId != defaultChromecastAppId {
+	return a.ensureIsAppID(defaultChromecastAppID)
+}
+
+func (a *Application) ensureIsAppID(appID string) error {
+	if a.application == nil || a.application.AppId != appID {
 		_, err := a.sendAndWaitDefaultRecv(&cast.LaunchRequest{
 			PayloadHeader: cast.LaunchHeader,
-			AppId:         defaultChromecastAppId,
+			AppId:         appID,
 		})
 
 		if err != nil {
-			return errors.Wrap(err, "unable to change to default media receiver")
+			return errors.Wrapf(err, "unable to change to appID %q", appID)
 		}
 		// Update the 'application' and 'media' field on the 'CastApplication'
 		return a.Update()
@@ -939,7 +998,7 @@ func (a *Application) startStreamingServer() error {
 	}
 	a.log("trying to find available port to start streaming server on")
 
-	listener, err := net.Listen("tcp", ":0")
+	listener, err := net.Listen("tcp", ":"+strconv.Itoa(a.serverPort))
 	if err != nil {
 		return errors.Wrap(err, "unable to bind to local tcp address")
 	}
@@ -947,9 +1006,9 @@ func (a *Application) startStreamingServer() error {
 	a.serverPort = listener.Addr().(*net.TCPAddr).Port
 	a.log("found available port :%d", a.serverPort)
 
-	a.httpServer = &http.Server{}
+	a.httpServer = http.NewServeMux()
 
-	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+	a.httpServer.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		// Check to see if we have a 'filename' and if it is one of the ones that have
 		// already been validated and is useable.
 		filename := r.URL.Query().Get("media_file")
@@ -992,7 +1051,7 @@ func (a *Application) startStreamingServer() error {
 
 	go func() {
 		a.log("media server listening on %d", a.serverPort)
-		if err := a.httpServer.Serve(listener); err != nil && err != http.ErrServerClosed {
+		if err := http.Serve(listener, a.httpServer); err != nil && err != http.ErrServerClosed {
 			log.WithField("package", "application").WithError(err).Fatal("error serving HTTP")
 		}
 	}()
@@ -1023,7 +1082,7 @@ func (a *Application) serveLiveStreaming(w http.ResponseWriter, r *http.Request,
 	w.Header().Set("Transfer-Encoding", "chunked")
 
 	if err := cmd.Run(); err != nil {
-		log.WithField("package", "application").WithFields(logrus.Fields{
+		log.WithField("package", "application").WithFields(log.Fields{
 			"filename": filename,
 		}).WithError(err).Error("error transcoding")
 	}
@@ -1133,9 +1192,9 @@ func (a *Application) startTranscodingServer(command string) error {
 	a.serverPort = listener.Addr().(*net.TCPAddr).Port
 	a.log("found available port :%d", a.serverPort)
 
-	a.httpServer = &http.Server{}
+	a.httpServer = http.NewServeMux()
 
-	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+	a.httpServer.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		// Check to see if we have a 'filename' and if it is one of the ones that have
 		// already been validated and is useable.
 		filename := r.URL.Query().Get("media_file")
@@ -1163,7 +1222,7 @@ func (a *Application) startTranscodingServer(command string) error {
 			w.Header().Set("Transfer-Encoding", "chunked")
 
 			if err := cmd.Run(); err != nil {
-				log.WithField("package", "application").WithFields(logrus.Fields{
+				log.WithField("package", "application").WithFields(log.Fields{
 					"filename": filename,
 				}).WithError(err).Error("error transcoding")
 			}
@@ -1181,7 +1240,7 @@ func (a *Application) startTranscodingServer(command string) error {
 
 	go func() {
 		a.log("media server listening on %d", a.serverPort)
-		if err := a.httpServer.Serve(listener); err != nil && err != http.ErrServerClosed {
+		if err := http.Serve(listener, a.httpServer); err != nil && err != http.ErrServerClosed {
 			log.WithField("package", "application").WithError(err).Fatal("error serving HTTP")
 		}
 	}()

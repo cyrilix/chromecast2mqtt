@@ -4,16 +4,17 @@ go 1.17
 
 require (
 	github.com/cyrilix/mqtt-tools v0.1.0
-	github.com/eclipse/paho.mqtt.golang v1.2.0
+	github.com/eclipse/paho.mqtt.golang v1.3.5
 	github.com/pkg/errors v0.9.1
-	github.com/sirupsen/logrus v1.7.0
-	github.com/vishen/go-chromecast v0.2.7
+	github.com/sirupsen/logrus v1.8.1
+	github.com/vishen/go-chromecast v0.2.11
 )
 
 require (
 	github.com/buger/jsonparser v1.0.0 // indirect
 	github.com/cenkalti/backoff v2.2.1+incompatible // indirect
 	github.com/gogo/protobuf v1.3.1 // indirect
+	github.com/gorilla/websocket v1.4.2 // indirect
 	github.com/grandcat/zeroconf v1.0.0 // indirect
 	github.com/h2non/filetype v1.1.0 // indirect
 	github.com/miekg/dns v1.1.35 // indirect
