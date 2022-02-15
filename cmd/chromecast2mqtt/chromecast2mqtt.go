@@ -11,7 +11,9 @@ import (
 	"github.com/vishen/go-chromecast/cast"
 	"github.com/vishen/go-chromecast/cast/proto"
 	"os"
+	"os/signal"
 	"strconv"
+	"syscall"
 )
 
 const (
@@ -19,9 +21,15 @@ const (
 	defaultClientId       = "chromecast2mqtt"
 )
 
-func listenEvents(app *application.Application, client MQTT.Client, topic string, mqttParameters *mqttTooling.MqttCliParameters) error {
+func listenEvents(app *application.Application, client MQTT.Client, topic string, mqttParameters *mqttTooling.MqttCliParameters, sigChan chan os.Signal) {
 
 	app.MediaStart()
+	defer func() {
+		if err := app.Stop(); err != nil {
+			log.Errorf("unable to stop application: %v", err)
+		}
+	}()
+
 	logb := log.WithFields(log.Fields{
 		"broker": mqttParameters.Broker,
 	})
@@ -47,8 +55,9 @@ func listenEvents(app *application.Application, client MQTT.Client, topic string
 			onReceiverStatusEvent(client, topic, mqttParameters, &payload)
 		}
 	})
-	app.MediaWait()
-	return nil
+
+	<-sigChan
+	log.Infof("exit on sigterm")
 }
 
 func onMediaStatusEvent(msg *string) {
@@ -130,12 +139,17 @@ func main() {
 			"broker": parameters.Broker,
 		}).Fatalf("unable to connect to mqtt bus: %v", err)
 	}
-	defer client.Disconnect(50)
+	defer func() {
+		log.Infof("disconnect mqtt connection")
+		client.Disconnect(50)
+	}()
 
 	app := initApp(err, chromecastAddress, chromecastPort)
 
-	err = listenEvents(app, client, topic, &parameters)
+	signChan := make(chan os.Signal)
+	signal.Notify(signChan, syscall.SIGTERM)
 
+	listenEvents(app, client, topic, &parameters, signChan)
 }
 
 func initApp(err error, chromecastAddress string, chromecastPort int) *application.Application {
