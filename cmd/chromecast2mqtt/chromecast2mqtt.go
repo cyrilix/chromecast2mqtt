@@ -53,6 +53,8 @@ func listenEvents(app *application.Application, client MQTT.Client, topic string
 			onMediaStatusEvent(&payload)
 		case "RECEIVER_STATUS":
 			onReceiverStatusEvent(client, topic, mqttParameters, &payload)
+		default:
+			log.Infof("unmanaged even: %v", payload)
 		}
 	})
 
