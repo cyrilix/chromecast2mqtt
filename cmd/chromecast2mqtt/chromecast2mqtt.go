@@ -14,6 +14,7 @@ import (
 	"os/signal"
 	"strconv"
 	"syscall"
+	"time"
 )
 
 const (
@@ -58,8 +59,18 @@ func listenEvents(app *application.Application, client MQTT.Client, topic string
 		}
 	})
 
-	<-sigChan
-	log.Infof("exit on sigterm")
+	for {
+		select {
+		case <-sigChan:
+			log.Infof("exit on sigterm")
+			return
+		case <-time.NewTimer(10 * time.Minute).C:
+			if err := app.Update(); err != nil {
+				log.Errorf("unable to update application: %v", err)
+			}
+			continue
+		}
+	}
 }
 
 func onMediaStatusEvent(msg *string) {
