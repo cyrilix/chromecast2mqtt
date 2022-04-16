@@ -10,6 +10,7 @@ import (
 	log "github.com/sirupsen/logrus"
 	"io/ioutil"
 	"os"
+	"time"
 )
 
 const (
@@ -122,4 +123,27 @@ func setDefaultValueFromEnv(value *string, key string, defaultValue string) {
 	} else {
 		*value = defaultValue
 	}
+}
+
+type Publisher interface {
+	Publish(topic string, payload []byte) error
+}
+
+func NewMqttPublisher(client MQTT.Client) *MqttPublisher {
+	return &MqttPublisher{client: client}
+}
+
+type MqttPublisher struct {
+	client   MQTT.Client
+	qos      byte
+	retained bool
+}
+
+func (m *MqttPublisher) Publish(topic string, payload []byte) error {
+	token := m.client.Publish(topic, m.qos, m.retained, payload)
+	token.WaitTimeout(10 * time.Millisecond)
+	if err := token.Error(); err != nil {
+		return fmt.Errorf("unable to publish to topic: %v", err)
+	}
+	return nil
 }
