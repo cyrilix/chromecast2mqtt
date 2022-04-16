@@ -1,15 +1,18 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"flag"
 	"github.com/cyrilix/chromecast2mqt/mediaplayer"
 	"github.com/cyrilix/mqtt-tools/mqttTooling"
 	MQTT "github.com/eclipse/paho.mqtt.golang"
+	"github.com/hellofresh/health-go/v4"
 	log "github.com/sirupsen/logrus"
 	"github.com/vishen/go-chromecast/application"
 	"github.com/vishen/go-chromecast/cast"
 	"github.com/vishen/go-chromecast/cast/proto"
+	"net/http"
 	"os"
 	"os/signal"
 	"strconv"
@@ -159,9 +162,26 @@ func main() {
 
 	app := initApp(err, chromecastAddress, chromecastPort)
 
+	healthz, _ := health.New(
+		health.WithChecks(health.Config{
+			Name:      "chromecast",
+			Timeout:   5 * time.Second,
+			SkipOnErr: false,
+			Check: func(ctx context.Context) error {
+				return app.Update()
+			},
+		}),
+	)
+	http.Handle("/status", healthz.Handler())
+	log.Debug("run status handler")
+	go func() {
+		log.Fatal(http.ListenAndServe(":8080", nil))
+	}()
+
 	signChan := make(chan os.Signal, 1)
 	signal.Notify(signChan, syscall.SIGTERM)
 
+	log.Debug("listen chromecast events")
 	listenEvents(app, client, topic, &parameters, signChan)
 }
 

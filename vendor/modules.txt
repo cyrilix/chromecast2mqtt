@@ -26,6 +26,9 @@ github.com/h2non/filetype
 github.com/h2non/filetype/matchers
 github.com/h2non/filetype/matchers/isobmff
 github.com/h2non/filetype/types
+# github.com/hellofresh/health-go/v4 v4.5.0
+## explicit; go 1.15
+github.com/hellofresh/health-go/v4
 # github.com/miekg/dns v1.1.46
 ## explicit; go 1.14
 github.com/miekg/dns
@@ -47,6 +50,14 @@ github.com/vishen/go-chromecast/cast
 github.com/vishen/go-chromecast/cast/proto
 github.com/vishen/go-chromecast/dns
 github.com/vishen/go-chromecast/storage
+# go.opentelemetry.io/otel v1.0.0
+## explicit; go 1.15
+go.opentelemetry.io/otel/attribute
+go.opentelemetry.io/otel/codes
+go.opentelemetry.io/otel/internal
+# go.opentelemetry.io/otel/trace v1.0.0
+## explicit; go 1.15
+go.opentelemetry.io/otel/trace
 # golang.org/x/mod v0.5.1
 ## explicit; go 1.17
 golang.org/x/mod/semver
