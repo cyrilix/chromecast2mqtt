@@ -1,6 +1,6 @@
 module github.com/cyrilix/chromecast2mqt
 
-go 1.17
+go 1.18
 
 require (
 	github.com/cyrilix/mqtt-tools v0.2.0

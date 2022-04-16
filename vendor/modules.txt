@@ -1,4 +1,4 @@
-# github.com/buger/jsonparser v1.0.0
+# github.com/buger/jsonparser v1.1.1
 ## explicit; go 1.13
 github.com/buger/jsonparser
 # github.com/cenkalti/backoff v2.2.1+incompatible
@@ -11,8 +11,8 @@ github.com/cyrilix/mqtt-tools/mqttTooling
 ## explicit; go 1.14
 github.com/eclipse/paho.mqtt.golang
 github.com/eclipse/paho.mqtt.golang/packets
-# github.com/gogo/protobuf v1.3.1
-## explicit
+# github.com/gogo/protobuf v1.3.2
+## explicit; go 1.15
 github.com/gogo/protobuf/proto
 # github.com/gorilla/websocket v1.4.2
 ## explicit; go 1.12
@@ -20,14 +20,14 @@ github.com/gorilla/websocket
 # github.com/grandcat/zeroconf v1.0.0
 ## explicit; go 1.13
 github.com/grandcat/zeroconf
-# github.com/h2non/filetype v1.1.0
+# github.com/h2non/filetype v1.1.3
 ## explicit; go 1.13
 github.com/h2non/filetype
 github.com/h2non/filetype/matchers
 github.com/h2non/filetype/matchers/isobmff
 github.com/h2non/filetype/types
-# github.com/miekg/dns v1.1.35
-## explicit; go 1.12
+# github.com/miekg/dns v1.1.46
+## explicit; go 1.14
 github.com/miekg/dns
 # github.com/mitchellh/go-homedir v1.1.0
 ## explicit
@@ -38,19 +38,20 @@ github.com/pkg/errors
 # github.com/sirupsen/logrus v1.8.1
 ## explicit; go 1.13
 github.com/sirupsen/logrus
-# github.com/vishen/go-chromecast v0.2.11
-## explicit; go 1.12
+# github.com/stretchr/testify v1.7.0
+## explicit; go 1.13
+# github.com/vishen/go-chromecast v0.2.12
+## explicit; go 1.17
 github.com/vishen/go-chromecast/application
 github.com/vishen/go-chromecast/cast
 github.com/vishen/go-chromecast/cast/proto
 github.com/vishen/go-chromecast/dns
 github.com/vishen/go-chromecast/storage
-# golang.org/x/crypto v0.0.0-20201124201722-c8d3bf9c5392
-## explicit; go 1.11
-golang.org/x/crypto/ed25519
-golang.org/x/crypto/ed25519/internal/edwards25519
-# golang.org/x/net v0.0.0-20201224014010-6772e930b67b
-## explicit; go 1.11
+# golang.org/x/mod v0.5.1
+## explicit; go 1.17
+golang.org/x/mod/semver
+# golang.org/x/net v0.0.0-20220225172249-27dd8689420f
+## explicit; go 1.17
 golang.org/x/net/bpf
 golang.org/x/net/internal/iana
 golang.org/x/net/internal/socket
@@ -58,8 +59,27 @@ golang.org/x/net/internal/socks
 golang.org/x/net/ipv4
 golang.org/x/net/ipv6
 golang.org/x/net/proxy
-# golang.org/x/sys v0.0.0-20210113181707-4bcb84eeeb78
-## explicit; go 1.12
+# golang.org/x/sys v0.0.0-20220310020820-b874c991c1a5
+## explicit; go 1.17
+golang.org/x/sys/execabs
 golang.org/x/sys/internal/unsafeheader
 golang.org/x/sys/unix
 golang.org/x/sys/windows
+# golang.org/x/tools v0.1.9
+## explicit; go 1.17
+golang.org/x/tools/go/gcexportdata
+golang.org/x/tools/go/internal/gcimporter
+golang.org/x/tools/go/internal/packagesdriver
+golang.org/x/tools/go/packages
+golang.org/x/tools/internal/event
+golang.org/x/tools/internal/event/core
+golang.org/x/tools/internal/event/keys
+golang.org/x/tools/internal/event/label
+golang.org/x/tools/internal/gocommand
+golang.org/x/tools/internal/packagesinternal
+golang.org/x/tools/internal/typeparams
+golang.org/x/tools/internal/typesinternal
+# golang.org/x/xerrors v0.0.0-20200804184101-5ec99f83aff1
+## explicit; go 1.11
+golang.org/x/xerrors
+golang.org/x/xerrors/internal

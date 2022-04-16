@@ -159,7 +159,7 @@ func main() {
 
 	app := initApp(err, chromecastAddress, chromecastPort)
 
-	signChan := make(chan os.Signal)
+	signChan := make(chan os.Signal, 1)
 	signal.Notify(signChan, syscall.SIGTERM)
 
 	listenEvents(app, client, topic, &parameters, signChan)
