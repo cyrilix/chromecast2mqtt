@@ -28,11 +28,7 @@ const (
 func listenEvents(app *application.Application, client MQTT.Client, topic string, mqttParameters *mqttTooling.MqttCliParameters, sigChan chan os.Signal) {
 
 	app.MediaStart()
-	defer func() {
-		if err := app.Stop(); err != nil {
-			log.Errorf("unable to stop application: %v", err)
-		}
-	}()
+	// Don't close app on exit or current application on device will be closed
 
 	logb := log.WithFields(log.Fields{
 		"broker": mqttParameters.Broker,
