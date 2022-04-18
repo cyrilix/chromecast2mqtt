@@ -164,7 +164,7 @@ func main() {
 			Timeout:   5 * time.Second,
 			SkipOnErr: false,
 			Check: func(ctx context.Context) error {
-				return nil
+				return app.Update()
 			},
 		}),
 	)
