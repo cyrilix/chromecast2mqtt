@@ -164,7 +164,11 @@ func main() {
 			Timeout:   5 * time.Second,
 			SkipOnErr: false,
 			Check: func(ctx context.Context) error {
-				return app.Update()
+				err := app.Update()
+				if err != nil {
+					log.Warnf("unable to check chromecast status")
+				}
+				return nil
 			},
 		}),
 	)
