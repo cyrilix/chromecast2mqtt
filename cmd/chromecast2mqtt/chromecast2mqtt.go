@@ -54,7 +54,7 @@ func listenEvents(app *application.Application, client MQTT.Client, topic string
 
 		switch raw["type"] {
 		case "MEDIA_STATUS":
-			onMediaStatusEvent(&payload)
+			onMediaStatusEvent(payload)
 		case "RECEIVER_STATUS":
 			onReceiverStatusEvent(client, topic, mqttParameters, &payload)
 		default:
@@ -76,8 +76,8 @@ func listenEvents(app *application.Application, client MQTT.Client, topic string
 	}
 }
 
-func onMediaStatusEvent(msg *string) {
-
+func onMediaStatusEvent(msg string) {
+	log.Debugf("new media status event: %v", msg)
 }
 
 func onReceiverStatusEvent(client MQTT.Client, topic string, mqttParameters *mqttTooling.MqttCliParameters, msg *string) {
