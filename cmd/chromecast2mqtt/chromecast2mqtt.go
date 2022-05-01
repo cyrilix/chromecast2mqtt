@@ -166,7 +166,8 @@ func main() {
 			Check: func(ctx context.Context) error {
 				err := app.Update()
 				if err != nil {
-					log.Warnf("unable to check chromecast status")
+					log.Warnf("unable to check chromecast status: %v", err)
+					return err
 				}
 				return nil
 			},
